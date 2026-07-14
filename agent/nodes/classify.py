@@ -1,26 +1,16 @@
-"""Intent-classification node."""
+"""Intent-classification node.
+
+Classification is done via LangChain's ``with_structured_output()`` (native
+function calling), so the return value is a validated Pydantic model —
+never a malformed JSON string.
+"""
 
 import logging
 
-from langchain_core.messages import AIMessage
-
 from agent.state import AgentState
-from services.llm import llm_classify
+from services.llm import Intent, IntentClassification, llm_classify
 
 logger = logging.getLogger(__name__)
-
-CLASSIFY_PROMPT = """你是电商客服意图分类器。分析用户消息，只输出一个JSON对象，不要输出任何其他内容。
-
-{
-  "intent": "general_qa|return_request|human_support",
-  "reason": "简短分类理由"
-}
-
-意图规则：
-- general_qa: 咨询商品信息、价格、规格、库存、使用说明、售后政策等知识类问题
-- return_request: 用户想退货、退款、换货、取消订单；或询问退货流程
-- human_support: 用户明确要求"转人工""人工客服""找真人""投诉"；或消息中包含辱骂、威胁、强烈不满情绪
-"""
 
 # Keywords that strongly suggest human handoff
 HANDOFF_KEYWORDS = [
@@ -42,16 +32,25 @@ async def classify_intent(state: AgentState) -> dict:
     last_msg = messages[-1]
     user_text = last_msg.content if hasattr(last_msg, "content") else str(last_msg)
 
-    # Fast-path: explicit handoff keywords → bypass LLM
+    # ── fast-path: handoff keywords → bypass LLM ──────────────────────────
     if _check_handoff_keywords(user_text):
         return {
             "intent": "human_support",
             "handoff_reason": "用户明确要求转人工",
         }
 
-    result = await llm_classify(CLASSIFY_PROMPT, user_text)
-    intent = result.get("intent", "human_support")
-    reason = result.get("reason", "")
+    # ── fast-path: active return flow + short input → follow-up reply ─────
+    active_return_step = state.get("return_step", "")
+    if active_return_step in ("waiting_order_id", "collecting_reason"):
+        if len(user_text) <= 50:
+            logger.info("Active return flow (%s) + short msg — forcing return_request", active_return_step)
+            return {"intent": "return_request"}
+        # Long message during active flow → probably a new topic, fall through to LLM
+
+    # ── structured LLM classification ────────────────────────────────────
+    result: IntentClassification = await llm_classify(user_text)
+    intent = result.intent.value  # Enum → string
+    reason = result.reason
 
     logger.info("Intent: %s | reason: %s", intent, reason)
 

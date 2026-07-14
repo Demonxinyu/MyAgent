@@ -22,8 +22,15 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["customer-service"])
 
-# Compiled graph — built once at import time
-_agent_graph = build_main_graph()
+# Compiled graph — built lazily on first use (AsyncSqliteSaver requires event loop)
+_agent_graph = None
+
+
+async def _get_graph():
+    global _agent_graph
+    if _agent_graph is None:
+        _agent_graph = await build_main_graph()
+    return _agent_graph
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -103,7 +110,8 @@ async def chat(req: ChatRequest):
     }
 
     try:
-        result = await _agent_graph.ainvoke(initial_state, config)
+        graph = await _get_graph()
+        result = await graph.ainvoke(initial_state, config)
     except Exception as exc:
         logger.exception("Graph invocation failed")
         return ChatResponse(
@@ -118,16 +126,24 @@ async def chat(req: ChatRequest):
     final_response = result.get("final_response", "")
     intent = result.get("intent", "")
     handoff_reason = result.get("handoff_reason", "")
+    return_step = result.get("return_step", "")
 
     session.messages.append({"role": "user", "content": req.message})
     session.messages.append({"role": "assistant", "content": final_response})
     session.return_order_id = result.get("return_order_id", "")
     session.return_reason = result.get("return_reason", "")
-    session.return_step = result.get("return_step", "")
+    session.return_step = return_step
 
     if handoff_reason:
         session.need_handoff = True
         session.handoff_reason = handoff_reason
+
+    # Clear return-flow fields when the flow is complete, so the next message
+    # doesn't get falsely classified as return_request.
+    if return_step in ("confirmed", "not_eligible", "failed") or not return_step:
+        session.return_order_id = ""
+        session.return_reason = ""
+        session.return_step = ""
 
     session_store.save(session)
 

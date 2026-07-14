@@ -34,11 +34,13 @@ The return subgraph runs through:
 start → validate_order → check_policy → collect_reason → initiate → confirm
 """
 
+import asyncio
 import logging
-import sqlite3
 from pathlib import Path
 
-from langgraph.checkpoint.sqlite import SqliteSaver
+import aiosqlite
+
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import END, StateGraph
 
 from config import settings
@@ -75,25 +77,32 @@ def route_by_intent(state: AgentState) -> str:
 
 
 def route_return_step(state: AgentState) -> str:
-    """Within the return subgraph, decide the next step."""
-    step = state.get("return_step", "start")
+    """Within the return subgraph, decide the next node.
 
-    # Terminal states
+    Terminal steps → END (graph stops, waits for next user message).
+    Progression steps → the next node in the return pipeline.
+    """
+    step = state.get("return_step", "")
+
+    # ── terminal: graph stops, response already in state ─────────────────
     if step in ("confirmed", "not_eligible"):
         return "generate_response"
+    if step in ("waiting_order_id", "collecting_reason"):
+        return END  # stop and wait for user input
+
+    # ── error ───────────────────────────────────────────────────────────
     if step == "failed":
         return "human_handoff"
 
-    # Progression
-    step_order = {
-        "start": "return_validate_order",
+    # ── progression ─────────────────────────────────────────────────────
+    step_order: dict[str, str] = {
+        "order_extracted": "return_validate_order",
         "validated": "return_check_policy",
         "policy_checked": "return_collect_reason",
-        "collecting_reason": "return_collect_reason",  # stay in this node until reason collected
+        "need_reason": "return_collect_reason",  # re-enter after user provides reason
         "reason_collected": "return_initiate",
         "initiated": "return_confirm",
     }
-
     next_node = step_order.get(step, "return_start")
     logger.info("Return step: %s → %s", step, next_node)
     return next_node
@@ -116,7 +125,7 @@ def after_return_or_response(state: AgentState) -> str:
 # ── graph construction ───────────────────────────────────────────────────────
 
 
-def build_main_graph() -> StateGraph:
+async def build_main_graph() -> StateGraph:
     """Construct and compile the top-level agent graph.
 
     The return flow is a separate compiled subgraph that is added as a single
@@ -158,45 +167,36 @@ def build_main_graph() -> StateGraph:
     })
     graph.add_edge("generate_response", END)
 
-    # Return flow edges (each node routes to the next step)
-    graph.add_conditional_edges("return_start", route_return_step, {
+    # Return flow edges.
+    # Every node can route to END (when waiting for user input) or to another node.
+    _return_edge_map = {
         "return_validate_order": "return_validate_order",
-        "return_start": "return_start",
-        "human_handoff": "human_handoff",
-        "generate_response": "generate_response",
-    })
-    graph.add_conditional_edges("return_validate_order", route_return_step, {
         "return_check_policy": "return_check_policy",
+        "return_collect_reason": "return_collect_reason",
+        "return_initiate": "return_initiate",
+        "return_confirm": "return_confirm",
         "return_start": "return_start",
         "human_handoff": "human_handoff",
         "generate_response": "generate_response",
-    })
-    graph.add_conditional_edges("return_check_policy", route_return_step, {
-        "return_collect_reason": "return_collect_reason",
-        "generate_response": "generate_response",
-        "human_handoff": "human_handoff",
-    })
-    graph.add_conditional_edges("return_collect_reason", route_return_step, {
-        "return_initiate": "return_initiate",
-        "return_collect_reason": "return_collect_reason",
-        "human_handoff": "human_handoff",
-    })
-    graph.add_conditional_edges("return_initiate", route_return_step, {
-        "return_confirm": "return_confirm",
-        "human_handoff": "human_handoff",
-        "generate_response": "generate_response",
-    })
-    graph.add_conditional_edges("return_confirm", route_return_step, {
-        "generate_response": "generate_response",
-    })
+        END: END,
+    }
+    for node in (
+        "return_start",
+        "return_validate_order",
+        "return_check_policy",
+        "return_collect_reason",
+        "return_initiate",
+        "return_confirm",
+    ):
+        graph.add_conditional_edges(node, route_return_step, _return_edge_map)
 
     graph.add_edge("human_handoff", END)
 
-    # SqliteSaver for persistent checkpointing — survives restarts.
-    # Shares the same database file as the session store (separate tables).
+    # AsyncSqliteSaver for persistent checkpointing — survives restarts.
+    # Uses aiosqlite (async wrapper around SQLite) to work with LangGraph's async API.
     db_dir = Path(settings.db_path).parent
     db_dir.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(settings.db_path, timeout=10, check_same_thread=False)
-    conn.execute("PRAGMA journal_mode=WAL")
-    checkpointer = SqliteSaver(conn)
+    conn = await aiosqlite.connect(settings.db_path)
+    await conn.execute("PRAGMA journal_mode=WAL")
+    checkpointer = AsyncSqliteSaver(conn)
     return graph.compile(checkpointer=checkpointer)
