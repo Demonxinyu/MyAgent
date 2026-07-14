@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>电商客服 Agent - 测试控制台</title>
+<style>
+  :root {
+    --bg: #f0f2f5;
+    --surface: #ffffff;
+    --border: #e5e7eb;
+    --text: #1f2937;
+    --text-secondary: #6b7280;
+    --primary: #4f46e5;
+    --primary-hover: #4338ca;
+    --success: #10b981;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+    --user-bubble: #4f46e5;
+    --bot-bubble: #f3f4f6;
+    --radius: 12px;
+    --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  /* ── Layout ─────────────────────────────────────────────── */
+  .app {
+    width: 100%;
+    max-width: 900px;
+    height: 95vh;
+    background: var(--surface);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Header ─────────────────────────────────────────────── */
+  .header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-shrink: 0;
+  }
+  .header h1 {
+    font-size: 18px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .header .badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 99px;
+    background: #eef2ff;
+    color: var(--primary);
+  }
+  .header-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  /* ── Session bar ────────────────────────────────────────── */
+  .session-bar {
+    padding: 10px 20px;
+    background: #fafbfc;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+  .session-bar label { color: var(--text-secondary); white-space: nowrap; }
+  .session-bar input {
+    flex: 1;
+    min-width: 180px;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 12px;
+    font-family: monospace;
+  }
+  .session-bar input:focus { outline: none; border-color: var(--primary); }
+
+  /* ── Status chips ───────────────────────────────────────── */
+  .status-row {
+    padding: 8px 20px;
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    min-height: 36px;
+    align-items: center;
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 99px;
+    border: 1px solid transparent;
+  }
+  .chip-qa       { background: #dbeafe; color: #1d4ed8; }
+  .chip-return   { background: #fef3c7; color: #b45309; }
+  .chip-handoff  { background: #fee2e2; color: #b91c1c; }
+  .chip-idle     { background: #f3f4f6; color: #6b7280; }
+  .chip-step     { background: #e0e7ff; color: #4338ca; }
+
+  /* ── Messages ───────────────────────────────────────────── */
+  .messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .msg {
+    max-width: 85%;
+    padding: 10px 14px;
+    border-radius: var(--radius);
+    font-size: 14px;
+    line-height: 1.6;
+    word-break: break-word;
+    animation: fadeIn .2s ease;
+  }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } }
+  .msg.user {
+    align-self: flex-end;
+    background: var(--user-bubble);
+    color: #fff;
+    border-bottom-right-radius: 4px;
+  }
+  .msg.bot {
+    align-self: flex-start;
+    background: var(--bot-bubble);
+    color: var(--text);
+    border-bottom-left-radius: 4px;
+    white-space: pre-wrap;
+  }
+  .msg .meta {
+    font-size: 11px;
+    opacity: .65;
+    margin-top: 4px;
+  }
+
+  /* Quick replies */
+  .quick-replies {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 4px 20px 8px;
+    flex-shrink: 0;
+  }
+  .quick-replies button {
+    font-size: 12px;
+    padding: 5px 14px;
+    border-radius: 99px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .quick-replies button:hover {
+    background: var(--primary);
+    color: #fff;
+    border-color: var(--primary);
+  }
+
+  /* ── Input ──────────────────────────────────────────────── */
+  .input-area {
+    padding: 12px 20px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+  .input-area textarea {
+    flex: 1;
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    resize: none;
+    min-height: 44px;
+    max-height: 120px;
+  }
+  .input-area textarea:focus { outline: none; border-color: var(--primary); }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition: all .15s;
+    white-space: nowrap;
+  }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-primary:hover { background: var(--primary-hover); }
+  .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-ghost {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+  }
+  .btn-ghost:hover { background: #f3f4f6; }
+  .btn-sm { font-size: 12px; padding: 5px 10px; }
+
+  /* Spinner */
+  .spinner {
+    display: inline-block;
+    width: 16px; height: 16px;
+    border: 2px solid rgba(255,255,255,.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin .6s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1f2937;
+    color: #fff;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 13px;
+    z-index: 999;
+    animation: toastIn .3s ease;
+  }
+  @keyframes toastIn { from { opacity: 0; transform: translateX(-50%) translateY(-10px); } }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- Header -->
+  <div class="header">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <h1>🤖 电商客服 Agent</h1>
+      <span class="badge">LangGraph</span>
+    </div>
+    <div class="header-actions">
+      <button class="btn btn-ghost btn-sm" onclick="loadHistory()">📋 历史</button>
+      <button class="btn btn-ghost btn-sm" onclick="newSession()">🔄 新会话</button>
+    </div>
+  </div>
+
+  <!-- Session bar -->
+  <div class="session-bar">
+    <label>Session ID:</label>
+    <input id="sessionIdInput" type="text" placeholder="留空自动创建" spellcheck="false">
+    <label>User ID:</label>
+    <input id="userIdInput" type="text" value="test_user" style="max-width:140px;" spellcheck="false">
+    <button class="btn btn-ghost btn-sm" onclick="copySessionId()">📎 复制</button>
+  </div>
+
+  <!-- Status chips -->
+  <div class="status-row" id="statusRow">
+    <span class="chip chip-idle" id="intentChip">⏳ 等待输入</span>
+  </div>
+
+  <!-- Messages -->
+  <div class="messages" id="messages">
+    <div style="text-align:center;color:var(--text-secondary);margin-top:60px;font-size:14px;">
+      👋 欢迎使用电商客服测试控制台<br>
+      <span style="font-size:12px;">试试输入「我要退货」或「这款手机支持5G吗」</span>
+    </div>
+  </div>
+
+  <!-- Quick replies -->
+  <div class="quick-replies">
+    <button onclick="sendQuick('这款手机的续航怎么样？')">💬 商品咨询</button>
+    <button onclick="sendQuick('我要退货')">📦 我要退货</button>
+    <button onclick="sendQuick('我的订单号是 ORD20240701001，我要退货')">📦 带订单号退货</button>
+    <button onclick="sendQuick('转人工客服')">🙋 转人工</button>
+  </div>
+
+  <!-- Input -->
+  <div class="input-area">
+    <textarea id="userInput" rows="1" placeholder="输入消息，Enter 发送，Shift+Enter 换行"
+              onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage();}"></textarea>
+    <button class="btn btn-primary" id="sendBtn" onclick="sendMessage()">发送</button>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div id="toastContainer"></div>
+
+<script>
+// ── State ────────────────────────────────────────────────────
+let sessionId = '';
+let isStreaming = false;
+
+// ── Helpers ──────────────────────────────────────────────────
+function $(id) { return document.getElementById(id); }
+
+function toast(msg) {
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = msg;
+  $('toastContainer').appendChild(el);
+  setTimeout(() => el.remove(), 2500);
+}
+
+function scrollToBottom() {
+  const m = $('messages');
+  m.scrollTop = m.scrollHeight;
+}
+
+function updateStatus(intent, needHandoff, reason, returnStep) {
+  const row = $('statusRow');
+  row.innerHTML = '';
+
+  if (needHandoff) {
+    row.innerHTML += `<span class="chip chip-handoff">🆘 转人工中: ${reason||''}</span>`;
+  }
+
+  let intentLabel = '';
+  let intentClass = 'chip-idle';
+  if (intent === 'general_qa')      { intentLabel = '📚 知识问答'; intentClass = 'chip-qa'; }
+  else if (intent === 'return_request') { intentLabel = '📦 退货流程'; intentClass = 'chip-return'; }
+  else if (intent === 'human_support')  { intentLabel = '🙋 转人工'; intentClass = 'chip-handoff'; }
+
+  if (intentLabel) {
+    row.innerHTML += `<span class="chip ${intentClass}">${intentLabel}</span>`;
+  }
+
+  if (returnStep && returnStep !== 'confirmed') {
+    const stepNames = {
+      'start': '📝 等待订单号',
+      'validated': '✅ 订单已验证',
+      'policy_checked': '🔍 政策检查通过',
+      'reason_collected': '📋 已收集原因',
+      'collecting_reason': '❓ 等待用户说明原因',
+      'initiated': '🚀 退货已创建',
+      'confirmed': '🎉 退货完成',
+      'not_eligible': '⛔ 不可退',
+      'failed': '❌ 流程失败',
+    };
+    const label = stepNames[returnStep] || returnStep;
+    row.innerHTML += `<span class="chip chip-step">${label}</span>`;
+  }
+
+  if (!row.innerHTML) {
+    row.innerHTML = `<span class="chip chip-idle">⏳ 等待输入</span>`;
+  }
+}
+
+// ── Messages ─────────────────────────────────────────────────
+function addMessage(role, text, extra='') {
+  const container = $('messages');
+  // Remove placeholder if present
+  const placeholder = container.querySelector('div[style]');
+  if (placeholder) placeholder.remove();
+
+  const div = document.createElement('div');
+  div.className = `msg ${role === 'user' ? 'user' : 'bot'}`;
+  div.textContent = text;
+  if (extra) {
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.textContent = extra;
+    div.appendChild(meta);
+  }
+  container.appendChild(div);
+  scrollToBottom();
+}
+
+function addBotMsg(text, intent, needHandoff, reason, returnStep) {
+  let extra = [];
+  if (intent) extra.push(`意图: ${intent}`);
+  if (returnStep && returnStep !== 'confirmed') extra.push(`步骤: ${returnStep}`);
+  addMessage('bot', text, extra.join(' · '));
+  updateStatus(intent, needHandoff, reason, returnStep);
+}
+
+// ── API calls ────────────────────────────────────────────────
+async function sendMessage() {
+  const input = $('userInput');
+  const text = input.value.trim();
+  if (!text || isStreaming) return;
+
+  isStreaming = true;
+  input.value = '';
+  $('sendBtn').disabled = true;
+  $('sendBtn').innerHTML = '<span class="spinner"></span>';
+
+  addMessage('user', text);
+
+  const userId = $('userIdInput').value.trim() || 'test_user';
+  const payload = {
+    user_id: userId,
+    message: text,
+  };
+  if (sessionId) payload.session_id = sessionId;
+
+  try {
+    const resp = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(`HTTP ${resp.status}: ${text.substring(0, 100)}`);
+    }
+    const data = await resp.json();
+
+    // Update session
+    if (data.session_id) {
+      sessionId = data.session_id;
+      $('sessionIdInput').value = sessionId;
+    }
+
+    addBotMsg(
+      data.response || '(空响应)',
+      data.intent,
+      data.need_handoff,
+      data.handoff_reason,
+      data.return_step
+    );
+  } catch (err) {
+    addMessage('bot', `❌ 请求失败: ${err.message}`);
+    updateStatus('', false, '', '');
+  } finally {
+    isStreaming = false;
+    $('sendBtn').disabled = false;
+    $('sendBtn').textContent = '发送';
+    input.focus();
+  }
+}
+
+function sendQuick(text) {
+  $('userInput').value = text;
+  sendMessage();
+}
+
+// ── Session management ──────────────────────────────────────
+function newSession() {
+  sessionId = '';
+  $('sessionIdInput').value = '';
+  $('messages').innerHTML = `<div style="text-align:center;color:var(--text-secondary);margin-top:60px;font-size:14px;">
+    🆕 已创建新会话<br><span style="font-size:12px;">输入消息开始对话</span></div>`;
+  $('statusRow').innerHTML = '<span class="chip chip-idle">⏳ 等待输入</span>';
+}
+
+async function loadHistory() {
+  const sid = $('sessionIdInput').value.trim();
+  if (!sid) return toast('请先输入或生成 Session ID');
+
+  try {
+    const resp = await fetch(`/api/history/${sid}`);
+    if (!resp.ok) {
+      if (resp.status === 404) return toast('会话不存在或已过期');
+      return toast(`请求失败: ${resp.status}`);
+    }
+    const data = await resp.json();
+
+    sessionId = data.session_id;
+    $('sessionIdInput').value = sessionId;
+
+    const container = $('messages');
+    container.innerHTML = '';
+    for (const m of data.messages || []) {
+      addMessage(m.role === 'assistant' ? 'bot' : 'user', m.content);
+    }
+    updateStatus(
+      data.return_step ? 'return_request' : null,
+      data.need_handoff,
+      data.handoff_reason,
+      data.return_step
+    );
+    toast(`已加载 ${(data.messages||[]).length} 条历史消息`);
+  } catch (err) {
+    toast(`加载失败: ${err.message}`);
+  }
+}
+
+function copySessionId() {
+  const sid = $('sessionIdInput').value.trim();
+  if (!sid) return toast('没有可复制的 Session ID');
+  navigator.clipboard.writeText(sid).then(
+    () => toast('Session ID 已复制到剪贴板'),
+    () => toast('复制失败')
+  );
+}
+
+// ── Init ─────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  $('userInput').focus();
+
+  // Enter to send (handled via onkeydown on the textarea)
+});
+</script>
+</body>
+</html>
